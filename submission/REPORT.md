@@ -91,7 +91,36 @@ Số liệu lấy từ `02_error_list_v1`:
   - img_0223 là bản thu nhỏ của img_0077 (tương quan 0.99, nhãn khớp 100%).
 
 ## 4. Cửa chặn và điều pipeline KHÔNG bắt được
-TODO(học viên): (a) chứng minh gate chặn đúng: chạy `python -m pipeline.run --budget 0 --reports work/rep_nb --export-dir work/exp_nb` (không có người duyệt nên ảnh thiếu file nhãn còn nguyên), chỉ ra kết luận **Rework**, mã thoát 20 và việc **không xuất** dataset. (Đừng sửa tay `work/run/ds`: pipeline dựng lại thư mục này từ raw mỗi lần chạy.) (b) ≥ 2 điểm mù có bằng chứng (box lỏng nhẹ, nhầm lớp mà model lớn cũng nhầm, ảnh trùng biến đổi mạnh…).
+**(a) Cổng chặn đúng.** So sánh hai lần chạy:
+
+| Lần chạy | Lệnh | Kết luận | Mã thoát | Xuất dataset |
+|---|---|---|---:|---|
+| Không có người duyệt | `python -m pipeline.run --budget 0 --reports work/rep_nb --export-dir work/exp_nb` | **Rework**: còn 6 lỗi bắt buộc `MISSING_LABEL_FILE` (img_0031, 0053, 0126, 0135, 0170, 0219) | **20** | **Không**. Log ghi "KHÔNG xuất: còn lỗi bắt buộc (Rework)"; `work/exp_nb/clean_v1` không tồn tại |
+| Chính (ngân sách 80) | `python -m pipeline.run` | Hold: 0 lỗi bắt buộc, 38/202 ảnh còn cảnh báo | 10 | Có, nhưng chỉ là bản nháp `clean_v1` (`decision: Hold`) |
+
+- Autofix không sửa `MISSING_LABEL_FILE`: nó chỉ ghi `needs_label` và không tạo file nhãn rỗng.
+- Vì vậy khi không ai gán nhãn, lỗi bắt buộc còn nguyên và cổng chặn, không xuất dataset.
+- Ở lần chạy chính, người duyệt gán nhãn cho đúng 6 ảnh đó (đứng đầu hàng đợi) nên lỗi biến mất.
+- Cổng không bao giờ bỏ qua lỗi bắt buộc, kể cả ở ảnh đã được duyệt.
+
+**(b) Những gì pipeline KHÔNG bắt được (có bằng chứng):**
+1. **Box lỏng nhẹ.**
+   - Trên calib có 5 box được chèn phình to ×1.45 đến ×1.58. Ở `conf` 0.6, `LOOSE_BOX` chỉ bắt được **1/5** (recall 0.20); ở mọi mức `conf`, recall cao nhất cũng chỉ 0.60.
+   - Trên raw có 28 cảnh báo `LOOSE_BOX`, nhưng người chỉ xem 12, vì trọng số 1.5 khiến chúng nằm cuối hàng đợi.
+   - Còn **16** cảnh báo nằm ở ảnh chưa duyệt. Box lỏng nhẹ hơn nữa thì không bị cờ chút nào.
+2. **Nhầm lớp mà model lớn cũng không phân xử được.**
+   - Sau khi người duyệt, 25 ảnh đã duyệt vẫn còn cảnh báo.
+   - Ví dụ: img_0078, img_0083, img_0220 được người gán là **truck**, nhưng yolo26l nói **car** với IoU ≥ 0.91 (conf 0.83, 0.69, 0.71).
+   - Ở ranh giới car↔truck, model và người bất đồng. Nếu nhãn sai **cùng hướng** với model thì sẽ không bao giờ bị cờ.
+   - Thêm nữa, các lỗi `WRONG_CLASS` trong calib chủ yếu là person→car, nên recall 0.83 đo trên calib không nói được gì về nhầm lẫn car↔truck↔bus trên raw.
+3. **Ảnh trùng biến đổi mạnh.**
+   - Cặp img_0084 / img_0074 có tương quan 0.75, 71% box khớp và cùng tỉ lệ khung 3:4.
+   - Khoảng cách phash của cặp này là 16 > 12, nên cả hai cùng vào dataset.
+   - Muốn bắt được thì phải nâng `phash_dist` lên 16, và khi đó sẽ xoá nhầm 8 ảnh khác (§3).
+4. **Autofix có thể biến "nhãn hỏng" thành "ảnh nền".**
+   - img_0050, img_0104, img_0194 mỗi ảnh chỉ có 1 dòng nhãn, và dòng đó bị lỗi (`BOX_ZERO`, `BAD_CLASS_ID` ×2). Xoá dòng xong thì file rỗng, nên `EMPTY_LABEL` tăng từ 12 lên 15.
+   - Lần này cả 3 ảnh được duyệt (vị trí 16, 17, 23 trong hàng đợi), chỉ vì model cũng báo `MISSING`.
+   - Nếu model không thấy vật, `EMPTY_LABEL` (trọng số 1) sẽ ở cuối hàng đợi, và ảnh có vật sẽ vào dataset như một ảnh nền.
 
 ## 5. Train: raw vs clean (tùy chọn, chấm riêng)
 Chưa train: ghi "chưa chạy" và lý do, rồi bỏ qua phần còn lại của mục này. Nếu đã train: dán bảng từ `submission/results/comparison.md` (model, epoch, seed, số ảnh train mỗi biến thể).
