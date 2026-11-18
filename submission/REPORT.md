@@ -123,11 +123,42 @@ Số liệu lấy từ `02_error_list_v1`:
    - Nếu model không thấy vật, `EMPTY_LABEL` (trọng số 1) sẽ ở cuối hàng đợi, và ảnh có vật sẽ vào dataset như một ảnh nền.
 
 ## 5. Train: raw vs clean (tùy chọn, chấm riêng)
-Chưa train: ghi "chưa chạy" và lý do, rồi bỏ qua phần còn lại của mục này. Nếu đã train: dán bảng từ `submission/results/comparison.md` (model, epoch, seed, số ảnh train mỗi biến thể).
-
-TODO(học viên): chênh mAP50 (clean − raw) so với **độ lệch chuẩn giữa các seed**; kết luận **trung thực** (nằm trong nhiễu thì nói là chưa kết luận được); ≥ 2 giả thuyết giải thích (ảnh trùng/rò rỉ test trong `raw`, nhãn máy còn lại trong `clean`, test chỉ 100 ảnh…) và cách kiểm.
+**Chưa chạy.**
+- Phần train trên Colab là tùy chọn và được chấm riêng. Phần lõi (Bước 1–5) được ưu tiên hoàn thành trước.
+- Nếu train sau, mục này sẽ được cập nhật bằng bảng từ `submission/results/comparison.md`.
+- `clean_v1` đã được xuất (bản nháp Hold) nên đủ điều kiện để train so sánh.
 
 ## 6. Quyết định và ghi chú AI
-TODO(học viên): (a) quyết định cuối; nếu Hold/Rework cần làm gì để thành Release? (b) Dùng AI viết code? Ghi 3 dòng: prompt chính, cách bạn kiểm code AI, 1 lần AI sai. Không dùng: ghi "không dùng".
+**(a) Quyết định cuối: Hold.** Chưa phát hành `clean_v1`.
+- **Điều kiện để thành Release:**
+  - số ảnh còn cảnh báo chưa duyệt phải giảm từ 38 xuống còn ≤ 20, tức dưới 10% của 202 ảnh;
+  - nghĩa là phải duyệt thêm **≥ 18 ảnh**. Theo thứ tự hàng đợi, ngân sách cần **≥ 98 ảnh** (hiện là 80).
+- **Phần còn lại phải xem** chủ yếu là:
 
-*(Thưởng +2, tùy chọn)* CVAT: lọc `width < 20`, ảnh/số box khớp, đối chiếu `BOX_TINY` (xem docs/CVAT_FILTER.md), 1 câu về `can_review`.
+  | Mã | Số cảnh báo |
+  |---|---:|
+  | `LOOSE_BOX` | 16 |
+  | `FALSE_POS` | 11 |
+  | `BOX_TINY` | 6 |
+  | `EMPTY_LABEL` | 4 |
+  | `BOX_HUGE` | 3 |
+
+- **Không** nâng `second_opinion.conf` lên 0.8 để ép ra Release, vì đó là Release giả (§3).
+- **Hold khác Rework:**
+  - Hold: không còn lỗi bắt buộc, nên dữ liệu không phải làm lại, chỉ thiếu thời gian người duyệt.
+  - Mã thoát **10** báo cho CI dừng phát hành nhưng vẫn giữ bản nháp; mã **20** (Rework) chặn hẳn và không xuất gì.
+
+**(b) Ghi chú AI** (Claude Code, dùng theo `docs/PROMPTING.md`):
+- **Prompt chính:**
+  - "theo format trong docs/PROMPTING.md code cho tôi file …";
+  - AI đọc docstring và test của từng module, rồi viết `label_format`, `gate`, `autofix`, `second_opinion`;
+  - AI cũng chạy các phép thử ngưỡng trên raw và soạn nháp báo cáo.
+- **Cách kiểm:**
+  - đọc lướt code: chỉ `autofix` ghi file, và chỉ trong `work/run/ds`; `git status data/raw` sạch; không có `except: pass`; mọi ngưỡng đều lấy từ `cfg`;
+  - `pytest`: 79/79 passed;
+  - chạy thử từng check trên **bản sao** của `data/raw`; chạy autofix lần 2 chỉ còn 6 `needs_label`, tức idempotent;
+  - đối chiếu số trong báo cáo với `08_summary.json` và `calibration.json`.
+- **Một lần AI sai:**
+  - Nháp §3 ghi "cả 9 ảnh mới bị loại ở phash 16 đều có tương quan −0.25…0.46".
+  - Khi rà lại thì img_0084 có tương quan 0.75, nhiều khả năng là trùng thật. Đã sửa thành 8/9 và đưa img_0084 vào điểm mù (§4b).
+  - Một lần khác: AI chạy `second_opinion` thẳng trên `data/raw` và gặp `RuntimeError`, vì 2 ảnh hỏng không có trong cache. Code đúng, chỉ là phép thử chạy sai chỗ: cửa vào đã loại 2 ảnh đó trước.
