@@ -1,18 +1,68 @@
-# Báo cáo Day 09 — <Họ và tên>, <MSHV>
-
-> Xoá mọi `TODO(học viên)` và dòng gợi ý. Mỗi ý trả lời bằng **số lấy từ `submission/reports/`**, kèm mẫu số. Cả báo cáo ~1–2 trang.
+# Báo cáo Day 09 — Phạm Duy Thanh, 2A202603343
 
 ## 1. Kết luận trước
-TODO(học viên): pipeline kết luận **Release / Hold / Rework**? Bao nhiêu ảnh vào, bao nhiêu ảnh ra dataset? Lý do chính (1–3 câu).
+**Kết luận: Hold** (mã thoát 10).
+- **Vào → ra:**
+  - lô raw có 224 ảnh;
+  - cửa vào loại 22 ảnh: 2 hỏng, 3 quá nhỏ, 8 trùng byte, 4 gần trùng, 5 rò rỉ test;
+  - còn **202 ảnh**, được xuất vào `submission/export/clean_v1`. Đây là **bản nháp**: manifest ghi `decision: Hold`, chưa phát hành.
+- **Lý do Hold:** sau 35 thay đổi tự động và 80/80 ảnh được người duyệt, **không còn lỗi bắt buộc** (0 ERROR trong `07_error_list_v3`). Nhưng **38/202 ảnh (18.8%)** còn cảnh báo chưa ai xem, vượt ngưỡng 10%.
+- **Ý nghĩa:** dữ liệu không phải làm lại; chỉ thiếu thời gian người duyệt.
 
 ## 2. Lỗi và phân việc
-Lấy từ `02_error_list_v1` (gom theo mã lỗi). Cột "ai sửa": **máy** (autofix) hay **người** (hàng đợi); chỉ ghi những mã có mặt trong lô của bạn.
+Số liệu lấy từ `02_error_list_v1`:
+- vòng QC 1 có **36 lỗi bắt buộc** và **153 cảnh báo** trên 202 ảnh;
+- cộng thêm 22/224 ảnh bị loại ở cửa vào.
 
 | Mã lỗi | Số ảnh/dòng | Ai sửa (máy/người) | Vì sao |
 |---|---:|---|---|
-| TODO(học viên) | | | |
+| `DUP_IMAGE_EXACT` | 8/224 ảnh | máy (loại ở cửa vào) | Trùng từng byte (md5) nên chắc chắn trùng; giữ ảnh đầu, loại bản sau |
+| `LEAK_TEST` | 5/224 ảnh | máy (loại) | Trùng ảnh của tập test; để lại sẽ làm mAP trên test bị ảo |
+| `DUP_IMAGE_NEAR` | 4/224 ảnh | máy (loại) | phash ≤ 12, ngưỡng đã calibrate để không xoá nhầm (§3) |
+| `BAD_SIZE` | 3/224 ảnh | máy (loại) | Cạnh ngắn 180–226 px, dưới mức 250 px |
+| `CORRUPT_IMAGE` | 2/224 ảnh | máy (loại) | Không đọc được ảnh (img_0010, img_0136) |
+| `BOX_OUT_OF_IMAGE` | 8 dòng / 8 ảnh | máy (`clip_box`) | Lỗi cú pháp: cắt box về [0,1], giữ nguyên lớp; trước → sau ghi trong `03_fixes.csv` |
+| `DUP_BOX` | 7 dòng / 7 ảnh | máy (`drop_line`) | Box cùng lớp có IoU > 0.9 với dòng trước: xoá dòng sau |
+| `BAD_CLASS_ID` | 6 dòng / 6 ảnh | máy (`drop_line`) | id 93, 7, 4, −1 nằm ngoài 0..3; không đoán được lớp đúng nên xoá dòng |
+| `BOX_ZERO` | 4 dòng / 4 ảnh | máy (`drop_line`) | Rộng hoặc cao bằng 0, nên không phải box |
+| `BAD_FORMAT` | 3 dòng / 3 ảnh | máy (`drop_line`) | Có `nan` hoặc thiếu cột |
+| `BAD_CLASS_NAME` | 2 tên trong `data.yaml` | máy (`rename_classes`) | `Person`, `Bus` được ghi lại đúng danh sách lớp của dự án |
+| `MISSING_LABEL_FILE` | 6/202 ảnh | **người** | Máy không được bịa nhãn, kể cả tạo file rỗng (file rỗng nghĩa là "ảnh nền"). Máy chỉ ghi `needs_label`; người đã gán nhãn cho cả 6 ảnh |
+| `POSSIBLE_MISSING` | 53 / 52 ảnh | người | Lỗi ngữ nghĩa: model thấy vật mà nhãn không có box. Model cũng có thể sai, nên chỉ cảnh báo |
+| `POSSIBLE_FALSE_POS` | 29 / 27 ảnh | người | Box nhãn không khớp vật nào model thấy |
+| `POSSIBLE_LOOSE_BOX` | 28 / 24 ảnh | người | Đúng vật, nhưng box lệch hoặc lỏng |
+| `POSSIBLE_WRONG_CLASS` | 18 / 18 ảnh | người | Nhầm car / truck / bus; chỉ người phân xử được |
+| `EMPTY_LABEL` | 12/202 ảnh | người | Máy không biết đây là ảnh nền hay ảnh thiếu nhãn |
+| `BOX_TINY` | 6 dòng / 4 ảnh | người | Cạnh box dưới 12 px; giữ hay bỏ theo guideline |
+| `BOX_HUGE` | 3 / 3 ảnh | người | Box chiếm hơn 95% ảnh |
+| `CLASS_RARE` | 4 (cấp dataset) | — (tự hết) | Là hệ quả của `BAD_CLASS_ID` (lớp −1, 4, 7, 93); biến mất khi máy xoá các dòng đó |
 
-TODO(học viên): vì sao `05_review_queue.csv` xếp ảnh đầu hàng như vậy? Với ngân sách 80 ảnh, người xem được bao nhiêu lỗi ngữ nghĩa?
+**Hàng đợi** (`05_review_queue.csv`) có **125 ảnh**, nhiều hơn ngân sách 80 ảnh.
+- **Cách tính điểm ưu tiên:**
+  - mỗi cảnh báo đóng góp trọng số của mã nhân `(1 + conf của model)`, với trọng số lấy từ `review.weights`;
+  - ảnh có dòng đã bị máy sửa được cộng thêm điểm.
+- **Thứ tự đầu hàng:**
+  1. `img_0020` đứng đầu với **11.52 điểm**. Ảnh này vừa bị máy xoá dòng, vừa bị model nghi 2 lỗi ngữ nghĩa:
+
+     | Thành phần | Điểm |
+     |---|---:|
+     | `FIXED_DROP_LINE` | 2 |
+     | `WRONG_CLASS` (nhãn truck, model nói bus): 3 × 1.947 | 5.84 |
+     | `MISSING`: 2 × 1.841 | 3.68 |
+
+  2. Tiếp theo là **6 ảnh `NEEDS_LABEL`**, mỗi ảnh 10 điểm. Nếu không ai gán nhãn cho chúng thì chắc chắn Rework (§4a), nên chúng phải được xem trước.
+  3. Sau đó là các ảnh có `WRONG_CLASS` hoặc `MISSING` với conf cao (trọng số 3 và 2).
+  4. `LOOSE_BOX` (1.5) và `BOX_TINY` (0.3) xếp cuối. Ảnh thứ 80 chỉ còn 3.34 điểm (một `MISSING`).
+- **Kết quả với ngân sách 80 ảnh:** người xem được **94/123 cảnh báo ngữ nghĩa** (74/103 ảnh):
+
+  | Mã | Đã duyệt / tổng |
+  |---|---|
+  | `WRONG_CLASS` | **18/18** |
+  | `MISSING` | **51/53** |
+  | `FALSE_POS` | 13/24 |
+  | `LOOSE_BOX` | 12/28 |
+
+  Phần lọt qua chủ yếu là box lỏng và box thừa, vì trọng số thấp. Đây chính là phần tạo ra 38 ảnh còn cảnh báo khiến cổng ra Hold.
 
 ## 3. Calibration (2 ngưỡng)
 | Tham số | Khởi đầu | Đã chọn | Precision / Recall (trước → sau) | Lý do (đánh đổi) |
